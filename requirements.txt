@@ -1,0 +1,13 @@
+# backend/requirements.txt
+
+fastapi
+uvicorn
+python-dotenv
+asyncpg
+supabase
+passlib[bcrypt]
+python-jose[cryptography]
+pydantic[email]
+pydantic-settings
+aiohttp
+requests
