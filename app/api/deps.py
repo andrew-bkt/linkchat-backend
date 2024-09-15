@@ -1,15 +1,18 @@
 # backend/app/api/deps.py
 
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt
 from jose.exceptions import JWTError, ExpiredSignatureError, JWTClaimsError
 from app.core.config import settings
 from app.schemas.user import User
+from typing import Optional
 
+logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> User:
     token = credentials.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -21,7 +24,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         expected_audience = "authenticated"
         expected_issuer = f"{settings.SUPABASE_URL}/auth/v1"
 
-        print(f"Received token: {token}")  # For debugging
+        logger.debug(f"Received token: {token[:10]}...")  # Log only the first 10 characters for security
         payload = jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,
@@ -29,26 +32,28 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             audience=expected_audience,
             issuer=expected_issuer,
         )
-        user_id: str = payload.get("sub")
-        email: str = payload.get("email")
+        user_id: Optional[str] = payload.get("sub")
+        email: Optional[str] = payload.get("email")
         if user_id is None or email is None:
-            print("Invalid token payload")
+            logger.warning("Invalid token payload")
             raise credentials_exception
     except ExpiredSignatureError:
-        print("Token has expired")
+        logger.warning("Token has expired")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except JWTClaimsError as e:
-        print(f"JWT claims error: {e}")
+        logger.error(f"JWT claims error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid claims: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except JWTError as e:
-        print(f"JWT error: {e}")
+        logger.error(f"JWT error: {e}")
         raise credentials_exception
+    
+    logger.info(f"User authenticated: {user_id}")
     return User(id=user_id, email=email)
