@@ -1,14 +1,14 @@
 # backend/app/api/v1/endpoints/chatbots.py
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form
-from typing import List
+from typing import List, Optional
 import uuid
 from app.schemas.chatbot import Chatbot
 from app.schemas.user import User
 from app.api import deps
 from app.db.session import get_supabase
 from app.services.link_generator import generate_unique_token
-from app.utils.file_utils import save_uploaded_files
+from app.utils.file_utils import save_uploaded_files, delete_files
 import logging
 
 router = APIRouter()
@@ -16,6 +16,8 @@ router = APIRouter()
 @router.post("/", response_model=Chatbot)
 async def create_chatbot(
     name: str = Form(...),
+    instructions: Optional[str] = Form(None),
+    tone: Optional[str] = Form(None),
     files: List[UploadFile] = File(None),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -42,16 +44,17 @@ async def create_chatbot(
         "id": chatbot_id,
         "user_id": current_user.id,
         "name": name,
+        "instructions": instructions,
+        "tone": tone,
         "token": token,
         "documents": file_urls
     }
     response = supabase.table("chatbots").insert(data).execute()
-    
     logging.info(f"Supabase response for creating chatbot: {response}")
     
     if response.data:
         logging.info(f"Created chatbot with id: {chatbot_id}, token: {token}, and documents: {file_urls}")
-        return Chatbot(id=chatbot_id, name=name, token=token)
+        return Chatbot(id=chatbot_id, name=name, instructions=instructions, tone=tone, token=token)
     else:
         logging.error(f"Failed to create chatbot: {response.error}")
         raise HTTPException(status_code=400, detail="Failed to create chatbot")
@@ -67,6 +70,7 @@ def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
     chatbots = response.data
     return [Chatbot(id=cb["id"], name=cb["name"], token=cb["token"]) for cb in chatbots]
 
+
 @router.get("/{chatbot_id}", response_model=Chatbot)
 def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
     supabase = get_supabase()
@@ -77,6 +81,8 @@ def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_u
     if chatbot["user_id"] != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
     return Chatbot(id=chatbot["id"], name=chatbot["name"], token=chatbot["token"])
+
+
 
 @router.get("/by-token/{token}", response_model=Chatbot)
 async def get_chatbot_by_token(token: str):
@@ -89,3 +95,30 @@ async def get_chatbot_by_token(token: str):
     
     chatbot = response.data[0]
     return Chatbot(id=chatbot["id"], name=chatbot["name"], token=chatbot["token"])
+
+
+
+@router.delete("/{chatbot_id}")
+async def delete_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
+    supabase = get_supabase()
+    
+    # Fetch the chatbot
+    response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
+    
+    chatbot = response.data
+    if chatbot["user_id"] != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Delete associated files
+    if chatbot.get("documents"):
+        await delete_files(chatbot["documents"])
+    
+    # Delete the chatbot from the database
+    delete_response = supabase.table("chatbots").delete().eq("id", chatbot_id).execute()
+    if len(delete_response.data) == 0:
+        raise HTTPException(status_code=500, detail="Failed to delete chatbot")
+    
+    return {"message": "Chatbot deleted successfully"}
+

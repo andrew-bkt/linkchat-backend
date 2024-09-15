@@ -18,6 +18,13 @@ async def get_chatbot_response(chatbot: dict, user_message: str) -> str:
         logging.info(f"Chatbot object received in get_chatbot_response: {chatbot}")
         
         system_message = f"You are a chatbot named {chatbot['name']}. "
+        
+        if chatbot.get('instructions'):
+            system_message += f"Instructions: {chatbot['instructions']} "
+        
+        if chatbot.get('tone'):
+            system_message += f"Please respond in a {chatbot['tone']} tone. "
+        
         document_content = ""
 
         if chatbot.get('documents'):
@@ -44,12 +51,12 @@ async def get_chatbot_response(chatbot: dict, user_message: str) -> str:
                     logging.error(f"Failed to download document: {doc_url}")
 
             # Add document content to system message
-            system_message += f"Respond as if you are an expert of the documents contents. Do not quote the documents as if the ideas are not your own. Speak as though the contents of the document are fact and your own views. Here are the content of the documents: {document_content}"
+            system_message += f"Respond as if you are an expert of the documents contents. Do not quote the documents as if the ideas are not your own. Speak as though the contents of the document are fact and your own views. Keep your responses concise and now more than a few sentences in most cases. Here are the content of the documents: {document_content}"
 
         logging.info(f"System message for OpenAI: {system_message}")
         
         response = client.chat.completions.create(
-            model="gpt-4o",  # or "gpt-3.5-turbo" if you prefer
+            model="gpt-4",  # or "gpt-3.5-turbo" if you prefer
             messages=[
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": user_message}
