@@ -51,8 +51,12 @@ async def startup_event():
     logger.info(f"Starting up application")
     logger.info(f"DEBUG mode: {app.debug}")
     logger.info(f"Environment: {os.environ.get('ENVIRONMENT', 'Not set')}")
-    logger.info(f"DATABASE_URL: {settings.DATABASE_URL}")
+    logger.info(f"SUPABASE_URL: {'Set' if settings.SUPABASE_URL else 'Not set'}")
     logger.info(f"OPENAI_API_KEY: {'Set' if settings.OPENAI_API_KEY else 'Not set'}")
+    # Log all available settings attributes
+    for attr in dir(settings):
+        if not attr.startswith("__") and not callable(getattr(settings, attr)):
+            logger.info(f"{attr}: {'Set' if getattr(settings, attr) else 'Not set'}")
 
 @app.get("/health")
 async def health_check():
