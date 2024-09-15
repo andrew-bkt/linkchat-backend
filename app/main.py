@@ -3,7 +3,7 @@ import sys
 import traceback
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from app.api.v1.api import api_router
 from app.core.config import settings
 import logging
@@ -25,7 +25,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(api_router, prefix="/api/v1")
+@app.middleware("http")
+async def https_redirect(request: Request, call_next):
+    response = await call_next(request)
+    if isinstance(response, RedirectResponse):
+        if response.headers.get('location', '').startswith('http://'):
+            response.headers['location'] = response.headers['location'].replace('http://', 'https://', 1)
+    return response
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -37,26 +43,7 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Response headers: {response.headers}")
     return response
 
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
-    logger.error(f"Unhandled exception: {''.join(tb)}")
-    return JSONResponse(
-        status_code=500,
-        content={"message": "Internal server error"}
-    )
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info(f"Starting up application")
-    logger.info(f"DEBUG mode: {app.debug}")
-    logger.info(f"Environment: {os.environ.get('ENVIRONMENT', 'Not set')}")
-    logger.info(f"SUPABASE_URL: {'Set' if settings.SUPABASE_URL else 'Not set'}")
-    logger.info(f"OPENAI_API_KEY: {'Set' if settings.OPENAI_API_KEY else 'Not set'}")
-    # Log all available settings attributes
-    for attr in dir(settings):
-        if not attr.startswith("__") and not callable(getattr(settings, attr)):
-            logger.info(f"{attr}: {'Set' if getattr(settings, attr) else 'Not set'}")
+app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():

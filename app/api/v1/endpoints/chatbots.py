@@ -60,7 +60,7 @@ async def create_chatbot(
         raise HTTPException(status_code=400, detail="Failed to create chatbot")
 
 
-@router.get("/", response_model=List[Chatbot])
+@router.get("/chatbots/", response_model=List[Chatbot])
 def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
     supabase = get_supabase()
     response = supabase.table("chatbots").select("*").eq("user_id", current_user.id).execute()
@@ -68,6 +68,11 @@ def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
         return []
     chatbots = response.data
     return [Chatbot(id=cb["id"], name=cb["name"], token=cb["token"]) for cb in chatbots]
+
+
+@router.get("/chatbots")
+def get_user_chatbots_redirect():
+    return RedirectResponse(url="/api/v1/chatbots/")
 
 
 @router.get("/{chatbot_id}", response_model=Chatbot)
