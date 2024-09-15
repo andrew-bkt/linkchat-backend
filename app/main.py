@@ -10,7 +10,7 @@ app = FastAPI(title="LLM Chat Application")
 
 # CORS configuration
 origins = [
-    "https://linkchat-ecru.vercel.app/",
+    "https://linkchat-production.up.railway.app",
     "http://localhost:3000",  # React frontend
     "http://localhost:8000",  # FastAPI backend (for development)
     # Add other allowed origins as needed
