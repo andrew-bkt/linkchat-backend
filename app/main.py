@@ -28,9 +28,10 @@ app.add_middleware(
 @app.middleware("http")
 async def https_redirect(request: Request, call_next):
     response = await call_next(request)
-    if isinstance(response, RedirectResponse):
-        if response.headers.get('location', '').startswith('http://'):
-            response.headers['location'] = response.headers['location'].replace('http://', 'https://', 1)
+    if 'location' in response.headers:
+        location = response.headers['location']
+        if location.startswith('http://'):
+            response.headers['location'] = location.replace('http://', 'https://', 1)
     return response
 
 @app.middleware("http")
