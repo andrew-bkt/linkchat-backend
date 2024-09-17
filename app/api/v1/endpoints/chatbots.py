@@ -20,42 +20,40 @@ async def create_chatbot(
     current_user: User = Depends(deps.get_current_user)
 ):
     supabase = get_supabase()
-    chatbot_id = str(uuid.uuid4())
-    token = generate_unique_token()
 
-    logging.info(f"Received request to create chatbot. Name: {name}, User: {current_user.id}")
-    logging.info(f"Received {len(files) if files else 0} files for chatbot creation")
-    
-    if files:
-        for file in files:
-            logging.info(f"File: {file.filename}, Content-Type: {file.content_type}")
+    try:
+        chatbot_data = {
+            "name": name,
+            "instructions": instructions,
+            "tone": tone,
+            "user_id": current_user.id
+        }
+        response = supabase.table("chatbots").insert(chatbot_data).execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=400, detail="Failed to create chatbot")
 
-        # Save files to storage
-        file_urls = await save_uploaded_files(files, chatbot_id)
-        logging.info(f"File URLs for chatbot {chatbot_id}: {file_urls}")
-    else:
-        file_urls = []
-        logging.info("No files received for upload")
+        chatbot = response.data[0]
+        
+        if files:
+            logging.info(f"Received {len(files)} files for chatbot")
+            new_file_urls = await save_uploaded_files(files, chatbot["id"])
+            supabase.table("chatbots").update({"documents": new_file_urls}).eq("id", chatbot["id"]).execute()
 
-    # Save chatbot info to Supabase
-    data = {
-        "id": chatbot_id,
-        "user_id": current_user.id,
-        "name": name,
-        "instructions": instructions,
-        "tone": tone,
-        "token": token,
-        "documents": file_urls
-    }
-    response = supabase.table("chatbots").insert(data).execute()
-    logging.info(f"Supabase response for creating chatbot: {response}")
-    
-    if response.data:
-        logging.info(f"Created chatbot with id: {chatbot_id}, token: {token}, and documents: {file_urls}")
-        return Chatbot(id=chatbot_id, name=name, instructions=instructions, tone=tone, token=token)
-    else:
-        logging.error(f"Failed to create chatbot: {response.error}")
-        raise HTTPException(status_code=400, detail="Failed to create chatbot")
+            chatbot["documents"] = new_file_urls
+        
+        return Chatbot(
+            id=chatbot["id"],
+            name=chatbot["name"],
+            instructions=chatbot["instructions"],
+            tone=chatbot["tone"],
+            token=chatbot["token"],
+            documents=chatbot.get("documents", [])
+        )
+    except ValidationError as ve:
+        logging.error(f"Validation error: {ve.errors()}")
+        raise HTTPException(status_code=422, detail=ve.errors())
+
 
 @router.get("/", response_model=List[Chatbot])
 def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
@@ -65,19 +63,30 @@ def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
         return []
     chatbots = response.data
     return [Chatbot(id=cb["id"], name=cb["name"], instructions=cb["instructions"], tone=cb["tone"], token=cb["token"]) for cb in chatbots]
-
+    
 @router.get("/{chatbot_id}", response_model=Chatbot)
-def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
+async def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
+    logging.info(f"Fetching chatbot with id: {chatbot_id}")
+    if not chatbot_id:
+        raise HTTPException(status_code=400, detail="chatbot_id is required")
+
     supabase = get_supabase()
     response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
+    
     if not response.data:
         raise HTTPException(status_code=404, detail="Chatbot not found")
+
     chatbot = response.data
     if chatbot["user_id"] != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
+
     return Chatbot(
-        id=chatbot["id"], name=chatbot["name"], instructions=chatbot["instructions"],
-        tone=chatbot["tone"], token=chatbot["token"], documents=chatbot["documents"]
+        id=chatbot["id"],
+        name=chatbot["name"],
+        instructions=chatbot["instructions"],
+        tone=chatbot["tone"],
+        token=chatbot["token"],
+        documents=chatbot["documents"]
     )
 
 @router.get("/by-token/{token}", response_model=Chatbot)
