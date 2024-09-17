@@ -1,6 +1,6 @@
 # backend/app/main.py
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from app.api.v1.api import api_router
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,12 +9,15 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://linkchat-ecru.vercel.app", "https://linkchat-4ayudpyjn-andrew-bkts-projects.vercel.app"],
+    allow_origins=[
+        "https://linkchat-ecru.vercel.app",
+        "https://linkchat-ofxyfsmc2-andrew-bkts-projects.vercel.app",
+        "http://localhost:3000"  # for local development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 app.include_router(api_router, prefix="/api/v1")
 
@@ -32,3 +35,7 @@ async def log_request(request, call_next):
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the API"}
+
+@app.options("/{full_path:path}")
+async def options_handler(request: Request, full_path: str):
+    return {}  # This will handle OPTIONS requests for all routes
