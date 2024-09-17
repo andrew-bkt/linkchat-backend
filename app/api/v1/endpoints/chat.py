@@ -12,10 +12,8 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
 
-
-    
-@router.post("/chatbots/{chatbot_id}/chat", response_model=ChatResponse)
-async def chat_with_bot(chatbot_id: str, chat_request: ChatRequest, request: Request):
+@router.post("/chatbots/{token}/chat", response_model=ChatResponse)
+async def chat_with_bot(token: str, chat_request: ChatRequest, request: Request):
     logging.info(f"Received chat request for token: {token}")
     logging.info(f"Request body: {chat_request.message}")
     logging.info(f"Request URL: {str(request.url)}")
