@@ -12,3 +12,4 @@ gunicorn
 pydantic-settings
 langchain-community
 pypdf
+tiktoken

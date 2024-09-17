@@ -1,5 +1,3 @@
-# backend/app/api/v1/endpoints/chat.py
-
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.db.session import get_supabase
@@ -14,9 +12,12 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
 
-@router.post("/{token}/chat", response_model=ChatResponse)
+@router.post("/{token}/chat", response_model=ChatResponse)  # Change this line
 async def chat_with_bot(token: str, chat_request: ChatRequest, request: Request):
     logging.info(f"Received chat request for token: {token}")
+    logging.info(f"Request body: {chat_request.message}")
+    logging.info(f"Request URL: {str(request.url)}")
+
     try:
         supabase = get_supabase()
         response = supabase.table("chatbots").select("*").eq("token", token).execute()
@@ -45,6 +46,5 @@ async def chat_with_bot(token: str, chat_request: ChatRequest, request: Request)
     except Exception as e:
         logging.error(f"Unexpected error in chat_with_bot: {str(e)}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
-
 
 logging.basicConfig(level=logging.INFO)

@@ -1,41 +1,26 @@
-import os
-import sys
-import traceback
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
-from app.api.v1.api import api_router
-from app.core.config import settings
+# backend/app/main.py
 import logging
+from fastapi import FastAPI
+from app.api.v1.api import api_router
+from fastapi.middleware.cors import CORSMiddleware
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-app = FastAPI(title="LLM Chat Application", debug=True)
-
-origins = [
-    "https://linkchat-production.up.railway.app",
-]
+logging.basicConfig(level=logging.INFO)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["https://linkchat-ecru.vercel.app", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def https_redirect(request: Request, call_next):
-    response = await call_next(request)
-    if 'location' in response.headers:
-        location = response.headers['location']
-        if location.startswith('http://'):
-            response.headers['location'] = location.replace('http://', 'https://', 1)
-    return response
+
+app.include_router(api_router, prefix="/api/v1")
 
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
+async def log_request(request, call_next):
+    logger = logging.getLogger("app")
     logger.info(f"Request URL: {request.url}")
     logger.info(f"Request method: {request.method}")
     logger.info(f"Request headers: {request.headers}")
@@ -44,12 +29,6 @@ async def log_requests(request: Request, call_next):
     logger.info(f"Response headers: {response.headers}")
     return response
 
-app.include_router(api_router, prefix="/api/v1")
-
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the API"}

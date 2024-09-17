@@ -1,5 +1,3 @@
-# backend/app/api/v1/endpoints/chatbots.py
-
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form, Body
 from typing import List, Optional
 import uuid
@@ -59,8 +57,7 @@ async def create_chatbot(
         logging.error(f"Failed to create chatbot: {response.error}")
         raise HTTPException(status_code=400, detail="Failed to create chatbot")
 
-
-@router.get("/chatbots/", response_model=List[Chatbot])
+@router.get("/", response_model=List[Chatbot])
 def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
     supabase = get_supabase()
     response = supabase.table("chatbots").select("*").eq("user_id", current_user.id).execute()
@@ -68,12 +65,6 @@ def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
         return []
     chatbots = response.data
     return [Chatbot(id=cb["id"], name=cb["name"], token=cb["token"]) for cb in chatbots]
-
-
-@router.get("/chatbots")
-def get_user_chatbots_redirect():
-    return RedirectResponse(url="/api/v1/chatbots/")
-
 
 @router.get("/{chatbot_id}", response_model=Chatbot)
 def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
@@ -89,7 +80,6 @@ def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_u
         tone=chatbot["tone"], token=chatbot["token"], documents=chatbot["documents"]
     )
 
-
 @router.get("/by-token/{token}", response_model=Chatbot)
 async def get_chatbot_by_token(token: str):
     supabase = get_supabase()
@@ -104,7 +94,6 @@ async def get_chatbot_by_token(token: str):
         id=chatbot["id"], name=chatbot["name"], instructions=chatbot["instructions"],
         tone=chatbot["tone"], token=chatbot["token"], documents=chatbot["documents"]
     )
-
 
 @router.put("/{chatbot_id}", response_model=Chatbot)
 async def update_chatbot(
@@ -161,22 +150,6 @@ async def update_chatbot(
     else:
         logging.error(f"Failed to update chatbot: {response.error}")
         raise HTTPException(status_code=400, detail="Failed to update chatbot")
-
-
-    if response.data:
-        updated_chatbot = response.data[0]
-        return Chatbot(
-            id=updated_chatbot["id"],
-            name=updated_chatbot["name"],
-            instructions=updated_chatbot["instructions"],
-            tone=updated_chatbot["tone"],
-            token=updated_chatbot["token"],
-            documents=updated_chatbot["documents"]
-        )
-    else:
-        logging.error(f"Failed to update chatbot: {response.error}")
-        raise HTTPException(status_code=400, detail="Failed to update chatbot")
-
 
 @router.delete("/{chatbot_id}")
 async def delete_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
@@ -235,3 +208,4 @@ async def delete_chatbot_file(
     await delete_files([file_url])
 
     return {"message": "File deleted successfully"}
+
