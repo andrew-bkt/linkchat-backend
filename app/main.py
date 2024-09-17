@@ -40,7 +40,10 @@ async def root():
 @app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def catch_all(request: Request, path_name: str):
     logging.info(f"Caught unhandled request: {request.method} {path_name}")
-    return {"message": "Route not found"}
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={"message": "Route not found"}
+    )
 
 @app.options("/{full_path:path}")
 async def options_handler(request: Request, full_path: str):

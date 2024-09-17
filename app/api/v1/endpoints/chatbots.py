@@ -1,3 +1,5 @@
+# app/api/v1/endpoints/chatbots.py
+
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form, Body
 from typing import List, Optional
 import uuid
