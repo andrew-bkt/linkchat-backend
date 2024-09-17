@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form, Body
 from typing import List, Optional
 import uuid
-from app.schemas.chatbot import Chatbot
+from app.schemas.chatbot import Chatbot, ChatbotInDB, ChatbotCreate
 from app.schemas.user import User
 from app.api import deps
 from app.db.session import get_supabase
@@ -64,7 +64,7 @@ def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
     if not response.data:
         return []
     chatbots = response.data
-    return [Chatbot(id=cb["id"], name=cb["name"], token=cb["token"]) for cb in chatbots]
+    return [Chatbot(id=cb["id"], name=cb["name"], instructions=cb["instructions"], tone=cb["tone"], token=cb["token"]) for cb in chatbots]
 
 @router.get("/{chatbot_id}", response_model=Chatbot)
 def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
