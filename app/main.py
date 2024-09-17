@@ -26,7 +26,6 @@ async def log_request(request: Request, call_next):
     logging.info(f"Received request: {request.method} {request.url}")
     logging.info(f"Request headers: {request.headers}")
     response = await call_next(request)
-    logging.info(f"Response status: {response.status_code}")
     logging.info(f"Response headers: {response.headers}")
     return response
 
@@ -42,7 +41,6 @@ async def root():
 async def catch_all(request: Request, path_name: str):
     logging.info(f"Caught unhandled request: {request.method} {path_name}")
     return JSONResponse(
-        status_code=status.HTTP_404_NOT_FOUND,
         content={"message": "Route not found"}
     )
 
