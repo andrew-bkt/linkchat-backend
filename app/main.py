@@ -11,6 +11,8 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://gowanus.biz",
+        "https://linkchat-80lw4govo-andrew-bkts-projects.vercel.app",
         "https://linkchat-ecru.vercel.app",
         "https://linkchat-ofxyfsmc2-andrew-bkts-projects.vercel.app",
         "http://localhost:3000",  # for local development
