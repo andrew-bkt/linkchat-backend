@@ -10,6 +10,7 @@ from app.db.session import get_supabase
 from app.services.link_generator import generate_unique_token
 from app.utils.file_utils import save_uploaded_files, delete_files
 import logging
+from pydantic import ValidationError
 
 router = APIRouter()
 
@@ -24,11 +25,16 @@ async def create_chatbot(
     supabase = get_supabase()
 
     try:
+        # Generate a unique token for the chatbot
+        token = generate_unique_token()
+
         chatbot_data = {
             "name": name,
             "instructions": instructions,
             "tone": tone,
-            "user_id": current_user.id
+            "user_id": current_user.id,
+            "token": token,
+            "documents": []
         }
         response = supabase.table("chatbots").insert(chatbot_data).execute()
         
@@ -55,6 +61,10 @@ async def create_chatbot(
     except ValidationError as ve:
         logging.error(f"Validation error: {ve.errors()}")
         raise HTTPException(status_code=422, detail=ve.errors())
+    except Exception as e:
+        logging.error(f"Error creating chatbot: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 
 @router.get("/", response_model=List[Chatbot])
