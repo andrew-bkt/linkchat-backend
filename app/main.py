@@ -16,6 +16,7 @@ app.add_middleware(
         "https://linkchat-ecru.vercel.app",
         "https://linkchat-ofxyfsmc2-andrew-bkts-projects.vercel.app",
         "http://localhost:3000",  # for local development
+        "http://localhost:8000",  # for local development
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -28,6 +29,7 @@ async def log_request(request: Request, call_next):
     logging.info(f"Received request: {request.method} {request.url}")
     logging.info(f"Request headers: {request.headers}")
     response = await call_next(request)
+    logging.info(f"Response status code: {response.status_code}")
     logging.info(f"Response headers: {response.headers}")
     return response
 
@@ -38,14 +40,3 @@ app.include_router(api_router, prefix="/api/v1")
 async def root():
     return {"message": "Welcome to the API"}
 
-# Catch-All Route for debugging unhandled requests
-@app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
-async def catch_all(request: Request, path_name: str):
-    logging.info(f"Caught unhandled request: {request.method} {path_name}")
-    return JSONResponse(
-        content={"message": "Route not found"}
-    )
-
-@app.options("/{full_path:path}")
-async def options_handler(request: Request, full_path: str):
-    return {}  # This will handle OPTIONS requests for all routes

@@ -1,4 +1,4 @@
-# app/api/v1/endpoints/chatbots.py
+# backend/app/api/v1/endpoints/chatbots.py
 
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form, Body
 from typing import List, Optional
@@ -11,6 +11,7 @@ from app.services.link_generator import generate_unique_token
 from app.utils.file_utils import save_uploaded_files, delete_files
 import logging
 from pydantic import ValidationError
+from postgrest.exceptions import APIError
 
 router = APIRouter()
 
@@ -29,6 +30,7 @@ async def create_chatbot(
         token = generate_unique_token()
 
         chatbot_data = {
+            "id": str(uuid.uuid4()),
             "name": name,
             "instructions": instructions,
             "tone": tone,
@@ -55,7 +57,7 @@ async def create_chatbot(
 
             chatbot["documents"] = new_file_urls
         
-        return Chatbot(
+        created_chatbot = Chatbot(
             id=chatbot["id"],
             name=chatbot["name"],
             instructions=chatbot["instructions"],
@@ -63,15 +65,14 @@ async def create_chatbot(
             token=chatbot["token"],
             documents=chatbot.get("documents", [])
         )
+        
+        return created_chatbot
     except ValidationError as ve:
         logging.error(f"Validation error: {ve.errors()}")
         raise HTTPException(status_code=422, detail=ve.errors())
     except Exception as e:
         logging.error(f"Error creating chatbot: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-
 
 @router.get("/", response_model=List[Chatbot])
 def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
@@ -80,23 +81,28 @@ def get_user_chatbots(current_user: User = Depends(deps.get_current_user)):
     if not response.data:
         return []
     chatbots = response.data
-    return [Chatbot(id=cb["id"], name=cb["name"], instructions=cb["instructions"], tone=cb["tone"], token=cb["token"]) for cb in chatbots]
-    
+    return [Chatbot(id=cb["id"], name=cb["name"], instructions=cb["instructions"], tone=cb["tone"], token=cb["token"], documents=cb.get("documents", [])) for cb in chatbots]
+
 @router.get("/{chatbot_id}", response_model=Chatbot)
 async def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
     logging.info(f"Fetching chatbot with id: {chatbot_id}")
-    if not chatbot_id:
-        raise HTTPException(status_code=400, detail="chatbot_id is required")
+    if not chatbot_id or chatbot_id == "undefined":
+        raise HTTPException(status_code=400, detail="Invalid chatbot ID")
 
     supabase = get_supabase()
-    response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
+    try:
+        response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
+    except APIError as e:
+        logging.error(f"Supabase API error: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid chatbot ID format")
     
     if not response.data:
         raise HTTPException(status_code=404, detail="Chatbot not found")
 
     chatbot = response.data
     if chatbot["user_id"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+        logging.warning(f"User {current_user.id} attempted to access chatbot owned by another user.")
+        raise HTTPException(status_code=403, detail="Not authorized to access this chatbot")
 
     return Chatbot(
         id=chatbot["id"],
@@ -104,135 +110,44 @@ async def get_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_cur
         instructions=chatbot["instructions"],
         tone=chatbot["tone"],
         token=chatbot["token"],
-        documents=chatbot["documents"]
+        documents=chatbot.get("documents", [])
     )
 
-@router.get("/by-token/{token}", response_model=Chatbot)
-async def get_chatbot_by_token(token: str):
-    supabase = get_supabase()
-    response = supabase.table("chatbots").select("*").eq("token", token).execute()
-    logging.info(f"Get chatbot by token response: {response}")
-    
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Chatbot not found")
-    
-    chatbot = response.data[0]
-    return Chatbot(
-        id=chatbot["id"], name=chatbot["name"], instructions=chatbot["instructions"],
-        tone=chatbot["tone"], token=chatbot["token"], documents=chatbot["documents"]
-    )
-
-@router.put("/{chatbot_id}", response_model=Chatbot)
-async def update_chatbot(
-    chatbot_id: str,
-    name: str = Form(...),
-    instructions: Optional[str] = Form(None),
-    tone: Optional[str] = Form(None),
-    files: List[UploadFile] = File(None),
-    current_user: User = Depends(deps.get_current_user)
-):
-    supabase = get_supabase()
-
-    # Fetch the existing chatbot
-    response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Chatbot not found")
-
-    chatbot = response.data
-    if chatbot["user_id"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    # Update the fields
-    update_data = {
-        "name": name,
-        "instructions": instructions,
-        "tone": tone
-    }
-
-    # Handle file uploads
-    if files:
-        logging.info(f"Received {len(files)} files for chatbot update")
-        for file in files:
-            logging.info(f"File: {file.filename}, Content-Type: {file.content_type}")
-
-        # Save new files to storage
-        new_file_urls = await save_uploaded_files(files, chatbot_id)
-        existing_files = chatbot.get("documents", [])
-        update_data["documents"] = existing_files + new_file_urls
-        logging.info(f"Updated file URLs for chatbot {chatbot_id}: {update_data['documents']}")
-
-    response = supabase.table("chatbots").update(update_data).eq("id", chatbot_id).execute()
-    logging.info(f"Supabase response for updating chatbot: {response}")
-
-    if response.data:
-        updated_chatbot = response.data[0]
-        return Chatbot(
-            id=updated_chatbot["id"],
-            name=updated_chatbot["name"],
-            instructions=updated_chatbot["instructions"],
-            tone=updated_chatbot["tone"],
-            token=updated_chatbot["token"],
-            documents=updated_chatbot["documents"]
-        )
-    else:
-        logging.error(f"Failed to update chatbot: {response.error}")
-        raise HTTPException(status_code=400, detail="Failed to update chatbot")
-
-@router.delete("/{chatbot_id}")
+@router.delete("/{chatbot_id}", response_model=None)
 async def delete_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_current_user)):
+    logging.info(f"Deleting chatbot with id: {chatbot_id}")
     supabase = get_supabase()
 
-    # Fetch the chatbot
-    response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
+    try:
+        response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
+    except APIError as e:
+        logging.error(f"Supabase API error: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid chatbot ID format")
+
     if not response.data:
+        logging.warning(f"Chatbot with ID {chatbot_id} not found")
         raise HTTPException(status_code=404, detail="Chatbot not found")
 
     chatbot = response.data
     if chatbot["user_id"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+        logging.warning(f"User {current_user.id} attempted to delete chatbot owned by another user.")
+        raise HTTPException(status_code=403, detail="Not authorized to delete this chatbot")
 
-    # Delete associated files
-    if chatbot.get("documents"):
-        await delete_files(chatbot["documents"])
+    try:
+        # Delete associated documents first if they exist
+        if chatbot.get("documents"):
+            delete_files(chatbot["documents"])
+            logging.info(f"Deleted associated documents: {chatbot['documents']}")
 
-    # Delete the chatbot from the database
-    delete_response = supabase.table("chatbots").delete().eq("id", chatbot_id).execute()
-    if len(delete_response.data) == 0:
-        raise HTTPException(status_code=500, detail="Failed to delete chatbot")
+        # Delete the chatbot entry from the database
+        delete_response = supabase.table("chatbots").delete().eq("id", chatbot_id).execute()
+        if delete_response.status_code != 200:
+            logging.error(f"Failed to delete chatbot. Supabase response: {delete_response}")
+            raise HTTPException(status_code=400, detail="Failed to delete chatbot")
+        logging.info(f"Chatbot {chatbot_id} deleted successfully")
+    except Exception as e:
+        logging.error(f"Error deleting chatbot: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-    return {"message": "Chatbot deleted successfully"}
-
-@router.delete("/{chatbot_id}/files")
-async def delete_chatbot_file(
-    chatbot_id: str,
-    file_url: str = Body(..., embed=True),
-    current_user: User = Depends(deps.get_current_user)
-):
-    supabase = get_supabase()
-
-    # Fetch the chatbot
-    response = supabase.table("chatbots").select("*").eq("id", chatbot_id).single().execute()
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Chatbot not found")
-
-    chatbot = response.data
-    if chatbot["user_id"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    # Remove the file from the documents list
-    documents = chatbot.get("documents", [])
-    if file_url not in documents:
-        raise HTTPException(status_code=404, detail="File not found")
-
-    documents.remove(file_url)
-
-    # Update the chatbot with the new documents list
-    update_response = supabase.table("chatbots").update({"documents": documents}).eq("id", chatbot_id).execute()
-    if not update_response.data:
-        raise HTTPException(status_code=500, detail="Failed to update chatbot")
-
-    # Delete the file from storage
-    await delete_files([file_url])
-
-    return {"message": "File deleted successfully"}
+    return {"detail": "Chatbot deleted successfully"}
 
