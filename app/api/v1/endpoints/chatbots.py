@@ -36,17 +36,22 @@ async def create_chatbot(
             "token": token,
             "documents": []
         }
+        logging.info(f"Attempting to create chatbot with data: {chatbot_data}")
+        
         response = supabase.table("chatbots").insert(chatbot_data).execute()
         
         if not response.data:
+            logging.error(f"Failed to create chatbot. Supabase response: {response}")
             raise HTTPException(status_code=400, detail="Failed to create chatbot")
 
         chatbot = response.data[0]
+        logging.info(f"Chatbot created successfully: {chatbot}")
         
         if files:
             logging.info(f"Received {len(files)} files for chatbot")
             new_file_urls = await save_uploaded_files(files, chatbot["id"])
-            supabase.table("chatbots").update({"documents": new_file_urls}).eq("id", chatbot["id"]).execute()
+            update_response = supabase.table("chatbots").update({"documents": new_file_urls}).eq("id", chatbot["id"]).execute()
+            logging.info(f"Updated chatbot with file URLs. Response: {update_response}")
 
             chatbot["documents"] = new_file_urls
         
@@ -62,8 +67,9 @@ async def create_chatbot(
         logging.error(f"Validation error: {ve.errors()}")
         raise HTTPException(status_code=422, detail=ve.errors())
     except Exception as e:
-        logging.error(f"Error creating chatbot: {str(e)}")
+        logging.error(f"Error creating chatbot: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 
 
