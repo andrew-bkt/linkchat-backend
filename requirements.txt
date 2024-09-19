@@ -13,3 +13,5 @@ pydantic-settings
 langchain-community
 pypdf
 tiktoken
+langgraph
+langchain-openai
