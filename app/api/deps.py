@@ -24,7 +24,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         expected_audience = "authenticated"
         expected_issuer = f"{settings.SUPABASE_URL}/auth/v1"
 
-        logger.debug(f"Received token: {token[:10]}...")  # Log only the first 10 characters for security
+        # Log only the first 10 characters of the token for security
+        logger.debug(f"Received token: {token[:10]}...")  
         payload = jwt.decode(
             token,
             settings.SUPABASE_JWT_SECRET,

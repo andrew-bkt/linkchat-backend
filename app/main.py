@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.api import api_router
 from fastapi.middleware.cors import CORSMiddleware
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 app = FastAPI()
 
 # CORS Middleware
@@ -22,6 +22,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# backend/app/main.py (add to the existing code)
+
+class SensitiveDataFilter(logging.Filter):
+    def filter(self, record):
+        sensitive_keywords = ['authorization', 'token', 'password']
+        record.msg = self.sanitize_message(record.msg, sensitive_keywords)
+        return True
+
+    def sanitize_message(self, message, keywords):
+        for keyword in keywords:
+            if keyword in message.lower():
+                message = message.replace(message, "[REDACTED]")
+        return message
+
+logging.getLogger().addFilter(SensitiveDataFilter())
+
+
+def sanitize_headers(headers):
+    sanitized_headers = {k: (v[:10] + '...') if k.lower() == 'authorization' else v for k, v in headers.items()}
+    return sanitized_headers
+
 
 # Middleware for Logging Requests and Responses
 @app.middleware("http")

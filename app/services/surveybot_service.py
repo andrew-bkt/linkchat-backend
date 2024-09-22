@@ -10,13 +10,32 @@ from app.core.config import settings
 import logging
 
 class SurveyState(TypedDict):
+    """
+    Represents the state of the survey.
+
+    Attributes:
+        messages (List[dict]): List of conversation messages.
+        current_question_index (int): Index of the current question.
+        answers (Dict[str, str]): Dictionary of answers keyed by question ID.
+        survey_complete (bool): Flag indicating if the survey is complete.
+    """
     messages: List[dict]
     current_question_index: int
     answers: Dict[str, str]
     survey_complete: bool
 
 class SurveyBotService:
+    """
+    Service class for managing the survey bot functionality.
+    """
+
     def __init__(self, survey_bot):
+        """
+        Initialize the SurveyBotService.
+
+        Args:
+            survey_bot: The survey bot configuration.
+        """
         self.survey_bot = survey_bot
         self.chat_model = ChatOpenAI(temperature=0.7, openai_api_key=settings.OPENAI_API_KEY)
         self.memory = ConversationBufferMemory(return_messages=True)
@@ -26,9 +45,22 @@ class SurveyBotService:
         self.interpreted_answers = {}
 
     def _format_questions(self):
+        """
+        Format the survey questions into a string.
+
+        Returns:
+            str: Formatted string of survey questions.
+        """
         return "\n".join([f"{q['order_number']}. {q['question_text']} (Type: {q['question_type']})" for q in self.survey_bot['questions']])
 
+
     def _create_workflow(self):
+        """
+        Create the survey workflow.
+
+        Returns:
+            StateGraph: Compiled workflow graph.
+        """
         system_message = f"""You are a survey bot named {self.survey_bot['name']}. 
         Your task is to conduct a survey based on the following instructions:
         {self.survey_bot['instructions']}
@@ -68,38 +100,46 @@ class SurveyBotService:
             answers = state.get('answers', {})
 
             human_message = messages[-1]['content'] if messages else ""
+            logging.debug(f"Human message: {human_message}")
 
             validation_instructions = ""
+            move_to_next_question = True
 
             if current_question_index > 0 and human_message:
                 current_question = self.survey_bot['questions'][current_question_index - 1]
-                answers[current_question['id']] = human_message
-
-                # Include validation in the agent scratchpad
+                logging.debug(f"Current question: {current_question}")
+                
                 if current_question.get('answer_criteria'):
                     answer_criteria = current_question['answer_criteria']
+                    logging.debug(f"Answer criteria: {answer_criteria}")
                     validation_instructions = f"""
-    Check if the user's answer meets the following criteria: {answer_criteria}.
-    If it does not, politely ask the user to provide a valid answer according to the criteria.
-    If it does, proceed."""
+                        Check if the user's answer meets the following criteria: {answer_criteria}.
+                        If it does not, politely ask the user to provide more details according to the criteria.
+                        If it does meet the criteria, acknowledge the answer and proceed to the next question.
+                        """
+                    move_to_next_question = False  # We'll decide this based on the AI's response
                 else:
-                    validation_instructions = ""
+                    answers[current_question['id']] = human_message
+                    logging.debug(f"No criteria, added answer: {human_message}")
 
             if current_question_index < len(self.survey_bot['questions']):
                 next_question = self.survey_bot['questions'][current_question_index]
                 survey_complete = False
+                logging.debug(f"Next question: {next_question}")
 
                 agent_scratchpad = f"""
-    Acknowledge their previous answer if any.
-    {validation_instructions}
-    Ask this question: {next_question['question_text']}
-    """
+                    Acknowledge their previous answer if any.
+                    {validation_instructions}
+                    If the previous answer meets the criteria or there were no criteria, ask this question: {next_question['question_text']}
+                    """
             else:
                 next_question = None
                 survey_complete = True
                 agent_scratchpad = "This was the last question. Thank the user for completing the survey."
+                logging.debug("Survey complete")
 
             full_conversation = "\n".join([f"{'Human' if msg['role'] == 'human' else 'AI'}: {msg['content']}" for msg in messages])
+            logging.debug(f"Full conversation: {full_conversation}")
 
             logging.debug(f"Prompt to OpenAI:\n{self.prompt.format_messages(user_input=full_conversation, agent_scratchpad=agent_scratchpad)}")
 
@@ -109,17 +149,19 @@ class SurveyBotService:
             ))
             logging.debug(f"OpenAI response: {response}")
 
-            # Store AI's interpretation of the answer
             if current_question_index > 0:
                 current_question = self.survey_bot['questions'][current_question_index - 1]
                 self.interpreted_answers[current_question['id']] = f"Question: {current_question['question_text']}\nAnswer: {human_message}\nInterpretation: {agent_scratchpad}"
 
-            # Decide whether to increment the question index based on validation
-            if "provide a valid answer" in response.content.lower():
-                # Do not increment current_question_index
-                pass
-            else:
+            # Check if the response indicates that more details are needed
+            if "provide more details" in response.content.lower() or "could you please" in response.content.lower():
+                move_to_next_question = False
+                logging.debug("AI requested more details")
+            elif move_to_next_question:
                 current_question_index += 1
+                if current_question_index > 0:
+                    answers[self.survey_bot['questions'][current_question_index - 1]['id']] = human_message
+                logging.debug(f"Moving to next question. New index: {current_question_index}")
 
             new_state = {
                 'messages': messages + [{'role': 'assistant', 'content': response.content}],
@@ -130,13 +172,12 @@ class SurveyBotService:
 
             logging.debug(f"New state in survey_agent: {new_state}")
 
-            # Store the full conversation
             self.full_conversation.append({'role': 'human', 'content': human_message})
             self.full_conversation.append({'role': 'assistant', 'content': response.content})
 
             return new_state
         except Exception as e:
-            logging.error(f"Exception in survey_agent: {e}")
+            logging.error(f"Exception in survey_agent: {e}", exc_info=True)
             return {
                 'messages': state.get('messages', []) + [{'role': 'assistant', 'content': "I'm sorry, but I encountered an error."}],
                 'current_question_index': state.get('current_question_index', 0),
@@ -145,12 +186,22 @@ class SurveyBotService:
             }
 
 
+
     async def get_response(self, user_message: str, conversation: List[dict]) -> str:
+        """
+        Get the next response from the survey bot.
+
+        Args:
+            user_message (str): The user's message.
+            conversation (List[dict]): The conversation history.
+
+        Returns:
+            str: The survey bot's response.
+        """
         try:
             logging.debug(f"get_response called with user_message: '{user_message}' and conversation: {conversation}")
 
             if not conversation:
-                # This is the first message, so we need to set up the initial state
                 initial_prompt = ChatPromptTemplate.from_messages([
                     ("system", f"""You are a survey bot named {self.survey_bot['name']}. 
                     Create an initial greeting for a survey based on these instructions:
@@ -171,7 +222,6 @@ class SurveyBotService:
                 self.memory.chat_memory.add_ai_message(initial_response.content)
                 return initial_response.content
 
-            # If it's not the first message, proceed with the existing logic
             self.memory.chat_memory.clear()
             for message in conversation:
                 if message['role'] == 'user':
@@ -210,11 +260,10 @@ class SurveyBotService:
                 logging.error("Workflow is None, unable to process state")
                 return "I apologize, but I encountered an error while processing your response."
 
-
             final_state = next(self.workflow.stream(state))
             logging.debug(f"State after workflow step: {final_state}")
 
-            state_data = final_state.get('survey_agent', {})  # Extract the 'survey_agent' dictionary
+            state_data = final_state.get('survey_agent', {})
 
             logging.debug(f"Extracted state data: {state_data}")
 
@@ -227,13 +276,17 @@ class SurveyBotService:
                 logging.error(f"Invalid state data: {state_data}")
                 return "I apologize, but I encountered an error while processing your response."
 
-
         except Exception as e:
             logging.error(f"Error in SurveyBotService: {e}", exc_info=True)
             return "I apologize, but I encountered an error while processing your response."
 
-
     def get_survey_results(self):
+        """
+        Get the results of the survey.
+
+        Returns:
+            dict: A dictionary containing the full conversation, interpreted answers, and raw answers.
+        """
         raw_answers = {}
         for i, message in enumerate(self.memory.chat_memory.messages):
             if isinstance(message, HumanMessage) and i < len(self.survey_bot['questions']):
@@ -247,5 +300,8 @@ class SurveyBotService:
         }
 
     def reset_survey(self):
+        """
+        Reset the survey to its initial state.
+        """
         self.memory.clear()
         self.current_question_index = 0
