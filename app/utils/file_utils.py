@@ -12,9 +12,6 @@ async def save_uploaded_files(files: List[UploadFile], chatbot_id: str) -> List[
     for file in files:
         try:
             content = await file.read()
-            file_size = len(content)  # get file size
-            logging.info(f"File {file.filename} size: {file_size} bytes")
-            
             file_path = f"{chatbot_id}/{file.filename}"
             logging.info(f"Uploading file: {file_path}")
             response = supabase.storage.from_("chatbot-documents").upload(file_path, content)
@@ -43,7 +40,7 @@ async def delete_files(file_urls: List[str]):
             file_path = url.split("chatbot-documents/")[-1]
             logging.info(f"Deleting file: {file_path}")
             
-            // Delete the file from Supabase storage
+            # Delete the file from Supabase storage
             response = supabase.storage.from_("chatbot-documents").remove(file_path)
             
             if response:
@@ -54,4 +51,3 @@ async def delete_files(file_urls: List[str]):
             logging.error(f"Error deleting file {url}: {str(e)}")
             logging.exception("Exception details:")
     logging.info("Finished deleting files")
-
