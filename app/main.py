@@ -12,6 +12,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://gowanus.biz",
+        "https://linkchat-ecru.vercel.app/",
         "https://linkchat-80lw4govo-andrew-bkts-projects.vercel.app",
         "https://linkchat-ecru.vercel.app",
         "https://linkchat-ofxyfsmc2-andrew-bkts-projects.vercel.app",
@@ -22,8 +23,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# backend/app/main.py (add to the existing code)
 
 class SensitiveDataFilter(logging.Filter):
     def filter(self, record):
@@ -38,7 +37,6 @@ class SensitiveDataFilter(logging.Filter):
         return message
 
 logging.getLogger().addFilter(SensitiveDataFilter())
-
 
 def sanitize_headers(headers):
     sanitized_headers = {k: (v[:10] + '...') if k.lower() == 'authorization' else v for k, v in headers.items()}
