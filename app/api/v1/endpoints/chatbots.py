@@ -136,7 +136,7 @@ async def delete_chatbot(chatbot_id: str, current_user: User = Depends(deps.get_
     try:
         # Delete associated documents first if they exist
         if chatbot.get("documents"):
-            delete_files(chatbot["documents"])
+            await delete_files(chatbot["documents"])
             logging.info(f"Deleted associated documents: {chatbot['documents']}")
 
         # Delete the chatbot entry from the database

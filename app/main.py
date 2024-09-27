@@ -12,9 +12,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://gowanus.biz",
-        "https://linkchat-ecru.vercel.app/",
-        "https://linkchat-80lw4govo-andrew-bkts-projects.vercel.app",
         "https://linkchat-ecru.vercel.app",
+        "https://linkchat-80lw4govo-andrew-bkts-projects.vercel.app",
         "https://linkchat-ofxyfsmc2-andrew-bkts-projects.vercel.app",
         "http://localhost:3000",  # for local development
         "http://localhost:8000",  # for local development
@@ -42,15 +41,14 @@ def sanitize_headers(headers):
     sanitized_headers = {k: (v[:10] + '...') if k.lower() == 'authorization' else v for k, v in headers.items()}
     return sanitized_headers
 
-
 # Middleware for Logging Requests and Responses
 @app.middleware("http")
 async def log_request(request: Request, call_next):
     logging.info(f"Received request: {request.method} {request.url}")
-    logging.info(f"Request headers: {request.headers}")
+    logging.info(f"Request headers: {sanitize_headers(dict(request.headers))}")
     response = await call_next(request)
     logging.info(f"Response status code: {response.status_code}")
-    logging.info(f"Response headers: {response.headers}")
+    logging.info(f"Response headers: {sanitize_headers(dict(response.headers))}")
     return response
 
 # Include API Router
